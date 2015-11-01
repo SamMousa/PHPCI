@@ -10,6 +10,8 @@
 namespace PHPCI\Model\Build;
 
 use PHPCI\Builder;
+use PHPCI\Helper\Diff;
+use PHPCI\Helper\Github;
 use PHPCI\Model\Build\RemoteGitBuild;
 
 /**
@@ -43,39 +45,52 @@ class GithubBuild extends RemoteGitBuild
     {
         $token = \b8\Config::getInstance()->get('phpci.github.token');
 
-        if (empty($token)) {
+        if (empty($token) || empty($this->data['id'])) {
             return;
         }
 
         $project    = $this->getProject();
 
+        if (empty($project)) {
+            return;
+        }
+
         $url    = 'https://api.github.com/repos/'.$project->getReference().'/statuses/'.$this->getCommitId();
         $http   = new \b8\HttpClient();
 
-        switch($this->getStatus())
-        {
+        switch ($this->getStatus()) {
             case 0:
             case 1:
                 $status = 'pending';
+                $description = 'PHPCI build running.';
                 break;
             case 2:
                 $status = 'success';
+                $description = 'PHPCI build passed.';
                 break;
             case 3:
                 $status = 'failure';
+                $description = 'PHPCI build failed.';
                 break;
             default:
                 $status = 'error';
+                $description = 'PHPCI build failed to complete.';
                 break;
         }
 
         $phpciUrl = \b8\Config::getInstance()->get('phpci.url');
-        $params = array(    'state' => $status,
-                            'target_url' => $phpciUrl . '/build/view/' . $this->getId());
+
+        $params = array(
+            'state' => $status,
+            'target_url' => $phpciUrl . '/build/view/' . $this->getId(),
+            'description' => $description,
+            'context' => 'PHPCI',
+        );
+
         $headers = array(
             'Authorization: token ' . $token,
             'Content-Type: application/x-www-form-urlencoded'
-            );
+        );
 
         $http->setHeaders($headers);
         $http->request('POST', $url, json_encode($params));
@@ -101,12 +116,16 @@ class GithubBuild extends RemoteGitBuild
      */
     public function getCommitMessage()
     {
-        $rtn = $this->data['commit_message'];
+        $rtn = parent::getCommitMessage($this->data['commit_message']);
 
-        $reference = $this->getProject()->getReference();
-        $commitLink = '<a target="_blank" href="https://github.com/' . $reference . '/issues/$1">#$1</a>';
-        $rtn = preg_replace('/\#([0-9]+)/', $commitLink, $rtn);
-        $rtn = preg_replace('/\@([a-zA-Z0-9_]+)/', '<a target="_blank" href="https://github.com/$1">@$1</a>', $rtn);
+        $project = $this->getProject();
+
+        if (!is_null($project)) {
+            $reference = $project->getReference();
+            $commitLink = '<a target="_blank" href="https://github.com/' . $reference . '/issues/$1">#$1</a>';
+            $rtn = preg_replace('/\#([0-9]+)/', $commitLink, $rtn);
+            $rtn = preg_replace('/\@([a-zA-Z0-9_]+)/', '<a target="_blank" href="https://github.com/$1">@$1</a>', $rtn);
+        }
 
         return $rtn;
     }
@@ -123,7 +142,7 @@ class GithubBuild extends RemoteGitBuild
 
         if ($this->getExtra('build_type') == 'pull_request') {
             $matches = array();
-            preg_match('/\/([a-zA-Z0-9_\-]+\/[a-zA-Z0-9_\-]+)/', $this->getExtra('remote_url'), $matches);
+            preg_match('/[\/:]([a-zA-Z0-9_\-]+\/[a-zA-Z0-9_\-]+)/', $this->getExtra('remote_url'), $matches);
 
             $reference = $matches[1];
             $branch = $this->getExtra('remote_branch');
@@ -132,7 +151,7 @@ class GithubBuild extends RemoteGitBuild
         $link = 'https://github.com/' . $reference . '/';
         $link .= 'blob/' . $branch . '/';
         $link .= '{FILE}';
-        $link .= '#L{LINE}';
+        $link .= '#L{LINE}-L{LINE_END}';
 
         return $link;
     }
@@ -166,5 +185,70 @@ class GithubBuild extends RemoteGitBuild
         }
 
         return $success;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function reportError(
+        Builder $builder,
+        $plugin,
+        $message,
+        $severity = BuildError::SEVERITY_NORMAL,
+        $file = null,
+        $lineStart = null,
+        $lineEnd = null
+    ) {
+        $diffLineNumber = $this->getDiffLineNumber($builder, $file, $lineStart);
+
+        if (!is_null($diffLineNumber)) {
+            $helper = new Github();
+
+            $repo = $this->getProject()->getReference();
+            $prNumber = $this->getExtra('pull_request_number');
+            $commit = $this->getCommitId();
+
+            if (!empty($prNumber)) {
+                $helper->createPullRequestComment($repo, $prNumber, $commit, $file, $diffLineNumber, $message);
+            } else {
+                $helper->createCommitComment($repo, $commit, $file, $diffLineNumber, $message);
+            }
+        }
+
+        return parent::reportError($builder, $plugin, $message, $severity, $file, $lineStart, $lineEnd);
+    }
+
+    /**
+     * Uses git diff to figure out what the diff line position is, based on the error line number.
+     * @param Builder $builder
+     * @param $file
+     * @param $line
+     * @return int|null
+     */
+    protected function getDiffLineNumber(Builder $builder, $file, $line)
+    {
+        $line = (integer)$line;
+
+        $builder->logExecOutput(false);
+
+        $prNumber = $this->getExtra('pull_request_number');
+        $path = $builder->buildPath;
+
+        if (!empty($prNumber)) {
+            $builder->executeCommand('cd %s && git diff origin/%s "%s"', $path, $this->getBranch(), $file);
+        } else {
+            $commitId = $this->getCommitId();
+            $compare = $commitId == 'Manual' ? 'HEAD' : $commitId;
+            $builder->executeCommand('cd %s && git diff %s^^ "%s"', $path, $compare, $file);
+        }
+
+        $builder->logExecOutput(true);
+
+        $diff = $builder->getLastOutput();
+
+        $helper = new Diff();
+        $lines = $helper->getLinePositions($diff);
+
+        return isset($lines[$line]) ? $lines[$line] : null;
     }
 }

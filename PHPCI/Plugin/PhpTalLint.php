@@ -155,7 +155,7 @@ class PhpTalLint implements PHPCI\Plugin
             if (!$this->lintFile($itemPath)) {
                 $success = false;
             }
-        } elseif ($item->isDir() && $this->recursive && !$this->lintDirectory($itemPath . '/')) {
+        } elseif ($item->isDir() && $this->recursive && !$this->lintDirectory($itemPath . DIRECTORY_SEPARATOR)) {
             $success = false;
         }
 
@@ -202,17 +202,16 @@ class PhpTalLint implements PHPCI\Plugin
 
         list($suffixes, $tales) = $this->getFlags();
 
-        // FIXME: Find a way to clean this up
-        $lint = dirname(__FILE__) . '/../../vendor/phptal/phptal/tools/phptal_lint.php';
+        $lint  = dirname(__FILE__) . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR;
+        $lint .= 'vendor' . DIRECTORY_SEPARATOR . 'phptal' . DIRECTORY_SEPARATOR . 'phptal' . DIRECTORY_SEPARATOR;
+        $lint .= 'tools' . DIRECTORY_SEPARATOR . 'phptal_lint.php';
         $cmd = '/usr/bin/env php ' . $lint . ' %s %s "%s"';
 
         $this->phpci->executeCommand($cmd, $suffixes, $tales, $this->phpci->buildPath . $path);
 
         $output = $this->phpci->getLastOutput();
 
-        // FIXME: This is very messy, clean it up
         if (preg_match('/Found (.+?) (error|warning)/i', $output, $matches)) {
-
             $rows = explode(PHP_EOL, $output);
 
             unset($rows[0]);
@@ -225,7 +224,7 @@ class PhpTalLint implements PHPCI\Plugin
 
                 $row = str_replace('(use -i to include your custom modifier functions)', '', $row);
                 $message = str_replace($name . ': ', '', $row);
-                
+
                 $parts = explode(' (line ', $message);
 
                 $message = trim($parts[0]);

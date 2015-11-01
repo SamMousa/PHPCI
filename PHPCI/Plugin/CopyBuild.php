@@ -35,12 +35,12 @@ class CopyBuild implements \PHPCI\Plugin
      */
     public function __construct(Builder $phpci, Build $build, array $options = array())
     {
-        $path               = $phpci->buildPath;
-        $this->phpci        = $phpci;
-        $this->build = $build;
-        $this->directory    = isset($options['directory']) ? $options['directory'] : $path;
-        $this->wipe         = isset($options['wipe']) ?  (bool)$options['wipe'] : false;
-        $this->ignore       = isset($options['respect_ignore']) ?  (bool)$options['respect_ignore'] : false;
+        $path            = $phpci->buildPath;
+        $this->phpci     = $phpci;
+        $this->build     = $build;
+        $this->directory = isset($options['directory']) ? $options['directory'] : $path;
+        $this->wipe      = isset($options['wipe']) ?  (bool)$options['wipe'] : false;
+        $this->ignore    = isset($options['respect_ignore']) ?  (bool)$options['respect_ignore'] : false;
     }
 
     /**
@@ -74,7 +74,7 @@ class CopyBuild implements \PHPCI\Plugin
      */
     protected function wipeExistingDirectory()
     {
-        if ($this->wipe == true && $this->directory != '/' && is_dir($this->directory)) {
+        if ($this->wipe === true && $this->directory != '/' && is_dir($this->directory)) {
             $cmd = 'rm -Rf "%s*"';
             $success = $this->phpci->executeCommand($cmd, $this->directory);
 

@@ -73,9 +73,9 @@ class Pgsql implements \PHPCI\Plugin
     }
 
     /**
-    * Connects to PgSQL and runs a specified set of queries.
-    * @return boolean
-    */
+     * Connects to PgSQL and runs a specified set of queries.
+     * @return boolean
+     */
     public function execute()
     {
         try {
@@ -83,7 +83,7 @@ class Pgsql implements \PHPCI\Plugin
             $pdo = new PDO('pgsql:host=' . $this->host, $this->user, $this->pass, $opts);
 
             foreach ($this->queries as $query) {
-                $pdo->query($query);
+                $pdo->query($this->phpci->interpolate($query));
             }
         } catch (\Exception $ex) {
             $this->phpci->logFailure($ex->getMessage());

@@ -47,7 +47,7 @@ class Phing implements \PHPCI\Plugin
          * Set working directory
          */
         if (isset($options['directory'])) {
-            $directory = $phpci->buildPath . '/' . $options['directory'];
+            $directory = $phpci->buildPath . DIRECTORY_SEPARATOR . $options['directory'];
         } else {
             $directory = $phpci->buildPath;
         }
@@ -80,11 +80,6 @@ class Phing implements \PHPCI\Plugin
     public function execute()
     {
         $phingExecutable = $this->phpci->findBinary('phing');
-
-        if (!$phingExecutable) {
-            $this->phpci->logFailure(Lang::get('could_not_find', 'phing'));
-            return false;
-        }
 
         $cmd[] = $phingExecutable . ' -f ' . $this->getBuildFilePath();
 
@@ -213,8 +208,12 @@ class Phing implements \PHPCI\Plugin
      */
     public function propertiesToString()
     {
-        if (empty($this->properties)) {
-            return '';
+        /**
+         * fix the problem when execute phing out of the build dir
+         * @ticket 748
+         */
+        if (!isset($this->properties['project.basedir'])) {
+            $this->properties['project.basedir'] = $this->getDirectory();
         }
 
         $propertiesString = array();
@@ -256,7 +255,7 @@ class Phing implements \PHPCI\Plugin
      */
     public function setPropertyFile($propertyFile)
     {
-        if (!file_exists($this->getDirectory() . '/' . $propertyFile)) {
+        if (!file_exists($this->getDirectory() . DIRECTORY_SEPARATOR . $propertyFile)) {
             throw new \Exception(Lang::get('property_file_missing'));
         }
 

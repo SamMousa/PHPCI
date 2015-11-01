@@ -14,7 +14,6 @@ use b8\Exception\HttpException;
 use b8\Http\Response;
 use b8\Http\Response\RedirectResponse;
 use b8\View;
-use PHPCI\Model\Build;
 
 /**
 * PHPCI Front Controller
@@ -22,6 +21,11 @@ use PHPCI\Model\Build;
 */
 class Application extends b8\Application
 {
+    /**
+     * @var \PHPCI\Controller
+     */
+    protected $controller;
+
     /**
      * Initialise PHPCI - Handles session verification, routing, etc.
      */
@@ -47,13 +51,13 @@ class Application extends b8\Application
             return false;
         };
 
-        $skipAuth = [$this, 'shouldSkipAuth'];
+        $skipAuth = array($this, 'shouldSkipAuth');
 
         // Handler for the route we're about to register, checks for a valid session where necessary:
         $routeHandler = function (&$route, Response &$response) use (&$request, $validateSession, $skipAuth) {
             $skipValidation = in_array($route['controller'], array('session', 'webhook', 'build-status'));
 
-            if (!$skipValidation && !$validateSession() && !$skipAuth()) {
+            if (!$skipValidation && !$validateSession() && (!is_callable($skipAuth) || !$skipAuth())) {
                 if ($request->isAjax()) {
                     $response->setResponseCode(401);
                     $response->setContent('');
@@ -100,7 +104,7 @@ class Application extends b8\Application
             $this->response->setContent($view->render());
         }
 
-        if ($this->response->hasLayout()) {
+        if ($this->response->hasLayout() && $this->controller->layout) {
             $this->setLayoutVariables($this->controller->layout);
 
             $this->controller->layout->content  = $this->response->getContent();
@@ -131,9 +135,18 @@ class Application extends b8\Application
      */
     protected function setLayoutVariables(View &$layout)
     {
-        /** @var \PHPCI\Store\ProjectStore $projectStore */
-        $projectStore = b8\Store\Factory::getStore('Project');
-        $layout->projects = $projectStore->getAll();
+        $groups = array();
+        $groupStore = b8\Store\Factory::getStore('ProjectGroup');
+        $groupList = $groupStore->getWhere(array(), 100, 0, array(), array('title' => 'ASC'));
+
+        foreach ($groupList['items'] as $group) {
+            $thisGroup = array('title' => $group->getTitle());
+            $projects = b8\Store\Factory::getStore('Project')->getByGroupId($group->getId());
+            $thisGroup['projects'] = $projects['items'];
+            $groups[] = $thisGroup;
+        }
+
+        $layout->groups = $groups;
     }
 
     /**

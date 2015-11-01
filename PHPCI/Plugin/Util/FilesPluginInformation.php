@@ -2,6 +2,8 @@
 
 namespace PHPCI\Plugin\Util;
 
+use PHPCI\Plugin;
+
 /**
  * Class FilesPluginInformation
  * @package PHPCI\Plugin\Util
@@ -54,6 +56,7 @@ class FilesPluginInformation implements InstalledPluginInformation
         if ($this->pluginInfo === null) {
             $this->loadPluginInfo();
         }
+
         return $this->pluginInfo;
     }
 
@@ -66,8 +69,8 @@ class FilesPluginInformation implements InstalledPluginInformation
     public function getPluginClasses()
     {
         return array_map(
-            function ($plugin) {
-               return $plugin->class;
+            function (\stdClass $plugin) {
+                return $plugin->class;
             },
             $this->getInstalledPlugins()
         );
@@ -81,7 +84,7 @@ class FilesPluginInformation implements InstalledPluginInformation
         $this->pluginInfo = array();
         foreach ($this->files as $fileInfo) {
             if ($fileInfo instanceof \SplFileInfo) {
-                if ($fileInfo->isFile() && $fileInfo->getExtension()=='php') {
+                if ($fileInfo->isFile() && $fileInfo->getExtension() == 'php') {
                     $this->addPluginFromFile($fileInfo);
                 }
             }
@@ -97,11 +100,11 @@ class FilesPluginInformation implements InstalledPluginInformation
         $class = $this->getFullClassFromFile($fileInfo);
 
         if (!is_null($class)) {
-            $newPlugin = new \stdClass();
-            $newPlugin->class = $class;
+            $newPlugin         = new \stdClass();
+            $newPlugin->class  = $class;
             $newPlugin->source = "core";
-            $parts = explode('\\', $newPlugin->class);
-            $newPlugin->name = end($parts);
+            $parts             = explode('\\', $newPlugin->class);
+            $newPlugin->name   = end($parts);
 
             $this->pluginInfo[] = $newPlugin;
         }
@@ -114,8 +117,6 @@ class FilesPluginInformation implements InstalledPluginInformation
      */
     protected function getFullClassFromFile(\SplFileInfo $fileInfo)
     {
-        //TODO: Something less horrible than a regular expression
-        //      on the contents of a file
         $contents = file_get_contents($fileInfo->getRealPath());
         $matches = array();
 
@@ -123,11 +124,11 @@ class FilesPluginInformation implements InstalledPluginInformation
 
         if (isset($matches[1])) {
             $className = $matches[1];
-    
+
             $matches = array();
             preg_match('#namespace +([A-Za-z\\\\]+);#i', $contents, $matches);
             $namespace = $matches[1];
-    
+
             return $namespace . '\\' . $className;
         } else {
             return null;
